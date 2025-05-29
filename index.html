@@ -2,99 +2,76 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Astray – Gesture‑controlled 3‑D Maze</title>
+    <title>3‑D Maze</title>
 
-    <!-- ‑‑‑ Libraries ‑‑‑ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- MediaPipe Hands & Utils -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
-    <!-- ‑‑‑ Core Logic ‑‑‑ -->
     <script>
-    /* =============================================================
-       GLOBALS
-    ============================================================= */
     let camera, scene, renderer, light;
     let ballMesh, ballRadius = 0.25;
     let keyAxis = [0, 0];
     let gameState = "initialize";
-    let mazeDimension = 11;           // always odd → perfect maze
+    let mazeDimension = 11;           
     let maze, mazeMesh, planeMesh;
     
-    // Texture loader
     const textureLoader = new THREE.TextureLoader();
     let ballTexture, brickTexture, concreteTexture;
 
-    /* ----------------  Gesture‑control variables --------------- */
     let gestureCamera, hands;
-    let isGestureControlEnabled = true;
     let lastGestureTime = 0;
     let currentGesture = null;
     let gestureHoldTime = 0;
-    const GESTURE_HOLD_THRESHOLD = 200; // ms                      
+    const GESTURE_HOLD_THRESHOLD = 200;                   
 
-    /* ------------------  Simple "physics" ---------------------- */
     let ballPosition = { x: 1, y: 1 };
     let ballVelocity = { x: 0, y: 0 };
     const FRICTION = 0.85;
 
-    /* =============================================================
-       MAZE GENERATION  (ported from original Astray)
-       ‑ Perfect maze via iterative DFS on an odd‑dimension grid
-    ============================================================= */
     function generateSquareMaze(size) {
-        // ensure odd dimension ≥ 5
         if (size % 2 === 0) size += 1;
         if (size < 5)       size = 5;
 
-        // start with all walls = true
         const maze = Array.from({ length: size }, () => Array(size).fill(true));
 
-        // helper → index of neighbours two cells away
         const dirs = [
-            [ 0,  2],  // north
-            [ 0, -2],  // south
-            [ 2,  0],  // east
-            [-2,  0]   // west
+            [ 0,  2],  
+            [ 0, -2],  
+            [ 2,  0],  
+            [-2,  0]  
         ];
 
-        // stack‑based DFS (iterative) starting at (1,1)
         const stack = [[1, 1]];
-        maze[1][1] = false;            // carve start cell
+        maze[1][1] = false;            
 
         while (stack.length) {
             const [cx, cy] = stack[stack.length - 1];
 
-            // collect unvisited neighbours two steps away
             const neighbours = dirs
                 .map(([dx, dy]) => [cx + dx, cy + dy])
                 .filter(([nx, ny]) => nx > 0 && ny > 0 && nx < size - 1 && ny < size - 1 && maze[nx][ny]);
 
             if (neighbours.length === 0) {
-                stack.pop();           // backtrack when dead‑end
+                stack.pop();           
             } else {
-                // choose random neighbour and carve passage
                 const [nx, ny] = neighbours[Math.floor(Math.random() * neighbours.length)];
                 const wallX = cx + (nx - cx) / 2;
                 const wallY = cy + (ny - cy) / 2;
-                maze[wallX][wallY] = false; // knock down wall between
-                maze[nx][ny]     = false;   // carve neighbour
+                maze[wallX][wallY] = false; 
+                maze[nx][ny]     = false;   
                 stack.push([nx, ny]);
             }
         }
 
-        // create exit at bottom‑right side, one cell up
         maze[size - 1][size - 2] = false;
         return maze;
     }
 
-    /* =============================================================
-       THREE.JS HELPERS
-    ============================================================= */
+
     function generateMazeMesh(field) {
         const geometry = new THREE.BufferGeometry();
         const vertices = [];
@@ -103,19 +80,12 @@
         let vIndex = 0;
 
         const pushCube = (x, y, z) => {
-            /* 24 vertices, 36 indices (two triangles per face) */
             const verts = [
-                // front
                 x-0.5,y-0.5,z+0.5,  x+0.5,y-0.5,z+0.5,  x+0.5,y+0.5,z+0.5,  x-0.5,y+0.5,z+0.5,
-                // back
                 x-0.5,y-0.5,z-0.5,  x-0.5,y+0.5,z-0.5,  x+0.5,y+0.5,z-0.5,  x+0.5,y-0.5,z-0.5,
-                // top
                 x-0.5,y+0.5,z-0.5,  x-0.5,y+0.5,z+0.5,  x+0.5,y+0.5,z+0.5,  x+0.5,y+0.5,z-0.5,
-                // bottom
                 x-0.5,y-0.5,z-0.5,  x+0.5,y-0.5,z-0.5,  x+0.5,y-0.5,z+0.5,  x-0.5,y-0.5,z+0.5,
-                // right
                 x+0.5,y-0.5,z-0.5,  x+0.5,y+0.5,z-0.5,  x+0.5,y+0.5,z+0.5,  x+0.5,y-0.5,z+0.5,
-                // left
                 x-0.5,y-0.5,z-0.5,  x-0.5,y-0.5,z+0.5,  x-0.5,y+0.5,z+0.5,  x-0.5,y+0.5,z-0.5
             ];
             const inds = [
@@ -124,19 +94,12 @@
                 16,17,18, 16,18,19, 20,21,22, 20,22,23
             ];
             
-            // UV coordinates for each face
             const faceUVs = [
-                // front
                 0,0, 1,0, 1,1, 0,1,
-                // back
                 0,0, 1,0, 1,1, 0,1,
-                // top
                 0,0, 1,0, 1,1, 0,1,
-                // bottom
                 0,0, 1,0, 1,1, 0,1,
-                // right
                 0,0, 1,0, 1,1, 0,1,
-                // left
                 0,0, 1,0, 1,1, 0,1
             ];
             
@@ -157,7 +120,6 @@
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
         
-        // Use brick texture for walls
         const wallMaterial = new THREE.MeshPhongMaterial({ 
             map: brickTexture,
             shininess: 30,
@@ -166,30 +128,24 @@
         return new THREE.Mesh(geometry, wallMaterial);
     }
 
-    /* =============================================================
-       RENDER WORLD
-    ============================================================= */
+
     function createRenderWorld() {
         scene = new THREE.Scene();
 
-        // Load textures
         ballTexture = textureLoader.load('ball.png');
         brickTexture = textureLoader.load('brick.png');
         concreteTexture = textureLoader.load('concrete.png');
         
-        // Set texture repeat for better tiling
         brickTexture.wrapS = brickTexture.wrapT = THREE.RepeatWrapping;
         brickTexture.repeat.set(0.5, 0.5);
         concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
         concreteTexture.repeat.set(mazeDimension/5, mazeDimension/5);
 
-        // lights - increased intensity to better show textures
         light = new THREE.PointLight(0xffffff, 1.2);
         light.position.set(1, 1, 1.3);
         scene.add(light);
         scene.add(new THREE.AmbientLight(0x404040, 0.6));
 
-        // ball with texture
         const ballGeom = new THREE.SphereGeometry(ballRadius, 32, 32);
         ballMesh = new THREE.Mesh(ballGeom, new THREE.MeshPhongMaterial({ 
             map: ballTexture,
@@ -198,13 +154,11 @@
         ballMesh.position.set(ballPosition.x, ballPosition.y, ballRadius);
         scene.add(ballMesh);
 
-        // camera
         const aspect = window.innerWidth / window.innerHeight;
         camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
         camera.position.set(1, 1, 5);
         scene.add(camera);
 
-        // maze & ground
         mazeMesh = generateMazeMesh(maze);
         scene.add(mazeMesh);
 
@@ -220,14 +174,10 @@
         scene.add(planeMesh);
     }
 
-    /* =============================================================
-       PHYSICS (very light)
-    ============================================================= */
     function updatePhysics() {
         ballVelocity.x *= FRICTION;
         ballVelocity.y *= FRICTION;
 
-        // input force
         const FORCE = 0.02;
         ballVelocity.x += keyAxis[0] * FORCE;
         ballVelocity.y += keyAxis[1] * FORCE;
@@ -244,38 +194,29 @@
             ballVelocity.x = 0;
             ballVelocity.y = 0;
         }
-        keyAxis = [0, 0]; // reset input each frame
+        keyAxis = [0, 0]; 
     }
 
-    /* =============================================================
-       RENDER UPDATE
-    ============================================================= */
     function updateRender() {
-    // Update ball position
-    ballMesh.position.set(ballPosition.x, ballPosition.y, ballRadius);
+   
+        ballMesh.position.set(ballPosition.x, ballPosition.y, ballRadius);
 
-    // Rolling logic
-    const velocityMagnitude = Math.sqrt(ballVelocity.x ** 2 + ballVelocity.y ** 2);
-    if (velocityMagnitude > 0.0001) {
-        const direction = new THREE.Vector3(ballVelocity.x, ballVelocity.y, 0).normalize();
-        const axis = new THREE.Vector3(-direction.y, direction.x, 0); // Perpendicular axis
-        const angle = velocityMagnitude / ballRadius; // θ = d / r
+        const velocityMagnitude = Math.sqrt(ballVelocity.x ** 2 + ballVelocity.y ** 2);
+        if (velocityMagnitude > 0.0001) {
+            const direction = new THREE.Vector3(ballVelocity.x, ballVelocity.y, 0).normalize();
+            const axis = new THREE.Vector3(-direction.y, direction.x, 0); // Perpendicular axis
+            const angle = velocityMagnitude / ballRadius; 
 
-        ballMesh.rotateOnAxis(axis, angle);
+            ballMesh.rotateOnAxis(axis, angle);
+        }
+
+        camera.position.x += (ballPosition.x - camera.position.x) * 0.1;
+        camera.position.y += (ballPosition.y - camera.position.y) * 0.1;
+        camera.position.z = 5;
+
+        light.position.set(camera.position.x, camera.position.y, camera.position.z - 3.7);
     }
 
-    // Camera follows ball
-    camera.position.x += (ballPosition.x - camera.position.x) * 0.1;
-    camera.position.y += (ballPosition.y - camera.position.y) * 0.1;
-    camera.position.z = 5;
-
-    // Move light with camera
-    light.position.set(camera.position.x, camera.position.y, camera.position.z - 3.7);
-    }
-
-    /* =============================================================
-       GAME LOOP
-    ============================================================= */
     function gameLoop() {
         switch (gameState) {
             case "initialize":
@@ -292,11 +233,10 @@
                 updateRender();
                 renderer.render(scene, camera);
 
-                // victory?  Exit coordinate is (mazeDimension, mazeDimension‑2) in original game, but inside ground we stop one before edge.
                 const mazeX = Math.floor(ballPosition.x + 0.5);
                 const mazeY = Math.floor(ballPosition.y + 0.5);
                 if (mazeX >= mazeDimension - 1 && mazeY === mazeDimension - 2) {
-                    mazeDimension += 2;      // next level larger
+                    mazeDimension += 2;     
                     gameState = "initialize";
                 }
                 break;
@@ -304,34 +244,39 @@
         requestAnimationFrame(gameLoop);
     }
 
-    /* =============================================================
-       CONTROLS – Gesture, Keyboard, Resize
-    ============================================================= */
+
     function recognizeGesture(landmarks) {
         if (!landmarks || !landmarks.length) return null;
         const hand = landmarks[0];
+        
         const indexTip = hand[8], indexPip = hand[6];
         const middleTip = hand[12], middlePip = hand[10];
         const ringTip = hand[16], ringPip = hand[14];
         const pinkyTip = hand[20], pinkyPip = hand[18];
 
-        let extended = 0;
-        if (indexTip.y < indexPip.y)  extended++;
-        if (middleTip.y < middlePip.y) extended++;
-        if (ringTip.y < ringPip.y)     extended++;
-        if (pinkyTip.y < pinkyPip.y)   extended++;
+        let extendedFingers = 0;
+        if (indexTip.y < indexPip.y) extendedFingers++;
+        if (middleTip.y < middlePip.y) extendedFingers++;
+        if (ringTip.y < ringPip.y) extendedFingers++;
+        if (pinkyTip.y < pinkyPip.y) extendedFingers++;
 
-        switch (extended) {
-            case 0: return "fist";   // down
-            case 1: return "one";   // up
-            case 2: return "two";   // left
-            case 3: return "three"; // right
+        switch (extendedFingers) {
+            case 0: return "fist";        
+            case 1: return "one";         
+            case 2: return "peace";       
+            case 3: return "three";      
+            case 4: return "open_palm";   
             default: return null;
         }
     }
 
     function gestureToDirection(gesture) {
-        const map = { one: "up", fist: "down", two: "left", three: "right" };
+        const map = { 
+            fist: "up",
+            open_palm: "down", 
+            peace: "left", 
+            one: "right" 
+        };
         return map[gesture] || null;
     }
 
@@ -352,7 +297,7 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-        if (isGestureControlEnabled && results.multiHandLandmarks?.length) {
+        if (results.multiHandLandmarks?.length) {
             results.multiHandLandmarks.forEach(lm => {
                 drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
                 drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 1 });
@@ -396,24 +341,10 @@
         gestureCamera.start();
     }
 
-    /* --------------------  UI HANDLERS  ----------------------- */
     function onKeyDown(e) {
-        if (!isGestureControlEnabled) {
-            switch (e.code) {
-                case 'ArrowUp':   case 'KeyK': keyAxis = [0,  1]; break;
-                case 'ArrowDown': case 'KeyJ': keyAxis = [0, -1]; break;
-                case 'ArrowLeft': case 'KeyH': keyAxis = [-1, 0]; break;
-                case 'ArrowRight':case 'KeyL': keyAxis = [1,  0]; break;
-            }
+        if (e.code === 'KeyI') {
+            document.getElementById('instructions').classList.toggle('show');
         }
-        if (e.code === 'KeyG') toggleGestureControl();
-        if (e.code === 'KeyI') document.getElementById('instructions').classList.toggle('show');
-    }
-
-    function toggleGestureControl() {
-        isGestureControlEnabled = !isGestureControlEnabled;
-        document.getElementById('gesture-toggle').textContent = isGestureControlEnabled ? 'Disable Gestures' : 'Enable Gestures';
-        updateGestureStatus(isGestureControlEnabled ? 'Gesture Control: ON' : 'Gesture Control: OFF');
     }
 
     function updateGestureStatus(msg) {
@@ -426,9 +357,7 @@
         camera.updateProjectionMatrix();
     }
 
-    /* =============================================================
-       INIT
-    ============================================================= */
+
     function init() {
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -439,7 +368,7 @@
         window.addEventListener('resize', onResize);
 
         initializeHandTracking();
-        updateGestureStatus('Gesture Control: ON');
+        updateGestureStatus('Gesture Control Active');
 
         gameState = "initialize";
         requestAnimationFrame(gameLoop);
@@ -448,11 +377,11 @@
     window.addEventListener('load', init);
     </script>
 
-    <!-- ‑‑‑ Styles ‑‑‑ -->
+
     <style>
         body { margin:0; overflow:hidden; background:#000; font-family:Arial, sans-serif; }
 
-        /* instruction overlay */
+  
         #instructions {
             position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
             background:rgba(0,0,0,0.9); color:#fff; padding:32px; border:2px solid #fff; border-radius:10px; display:none; z-index:1000;
@@ -462,41 +391,31 @@
         #help   { position:absolute; left:10px; bottom:10px; color:#fff; font-size:14px; z-index:100; }
         #level  { position:absolute; left:10px; top:10px; color:#ff0; font-weight:bold; font-size:18px; z-index:100; }
 
-        /* gesture */
-        #gesture-controls { position:absolute; right:10px; top:10px; padding:10px; background:rgba(0,0,0,0.8); color:#fff; border-radius:5px; z-index:100; }
-        #gesture-toggle   { background:#4CAF50; color:#fff; border:none; padding:6px 12px; border-radius:5px; cursor:pointer; font-size:12px; }
-        #gesture-toggle:hover { background:#45a049; }
         #gesture-status   { position:absolute; left:50%; top:10px; transform:translateX(-50%); padding:6px 12px; background:rgba(0,0,0,0.8); color:#0f0; font-weight:bold; border-radius:5px; z-index:100; }
 
         .output_canvas { position:absolute; bottom:10px; right:10px; width:240px; height:180px; border:2px solid #0f0; border-radius:5px; z-index:100; }
         .input_video   { display:none; }
-        .gesture-info  { position:absolute; bottom:200px; right:10px; background:rgba(0,0,0,0.9); color:#fff; font-size:12px; padding:10px; border-radius:5px; max-width:240px; z-index:100; }
+        .gesture-info  { position:relative; bottom:200px; right:10px; background:rgba(0,0,0,0.9); color:#fd0000; font-size:20px; padding:10px; border-radius:5px; max-width:240px; z-index:100; }
     </style>
 </head>
 <body>
     <div id="instructions">
         <h2>How to play Astray:</h2>
-        <p>Use the arrow keys (or H/J/K/L) or hand gestures to roll the ball to the exit.</p>
-        <p><strong>Gestures:</strong><br>☝️ One finger → Up&nbsp;&nbsp;|&nbsp;&nbsp;✊ Fist → Down<br>✌️ Two → Left&nbsp;&nbsp;|&nbsp;&nbsp;🤟 Three → Right</p>
-        <p>Press <kbd>G</kbd> to toggle gesture control<br>Press <kbd>I</kbd> to show / hide this overlay</p>
+        <p>Use hand gestures to roll the ball to the exit.</p>
+        <p><strong>Gestures:</strong><br>✊ Fist → Up<br>🖐️ Open Palm → Down<br>✌️ Peace Sign (Two Fingers) → Left<br>☝️ One Finger → Right</p>
+        <p>Press <kbd>I</kbd> to show / hide this overlay</p>
     </div>
 
-    <div id="help">Press 'I' for instructions | Press 'G' to toggle gestures</div>
+    <div id="help">Press 'I' for instructions | Gesture Control Only</div>
     <div id="level">Level 1</div>
 
-    <div id="gesture-controls">
-        <div>Gesture Control</div>
-        <button id="gesture-toggle" onclick="toggleGestureControl()">Disable Gestures</button>
-    </div>
-
-    <div id="gesture-status">Gesture Control: ON</div>
+    <div id="gesture-status">Gesture Control Active</div>
 
     <div class="gesture-info">
-        <strong>Gestures:</strong><br>
-        ☝️ One → Up<br>
-        ✊ Fist → Down<br>
-        ✌️ Two → Left<br>
-        🤟 Three → Right
+        ✊   Up<br>
+        🖐️   Down<br>
+        ✌️   Left<br>
+        ☝️   Right
     </div>
 
     <div class="vid">
