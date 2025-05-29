@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/2025/ITI/31_MLOps/Project/MLOPs-Final-Project/MLOPs-Final-Project/mlruns/278960870703692297/dd4cfacd0406468894ef9bb22f72d157/artifacts
+end_time: 1748503733417
+entry_point_name: ''
+experiment_id: '278960870703692297'
+lifecycle_stage: active
+run_id: dd4cfacd0406468894ef9bb22f72d157
+run_name: rf
+run_uuid: dd4cfacd0406468894ef9bb22f72d157
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748503714234
+status: 3
+tags: []
+user_id: mohamedshouaib

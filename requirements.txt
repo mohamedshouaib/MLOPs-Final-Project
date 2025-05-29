@@ -1,0 +1,7 @@
+mlflow
+scikit-learn
+opencv-python-headless
+pandas
+numpy
+joblib
+seaborn
