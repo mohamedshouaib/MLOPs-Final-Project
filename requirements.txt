@@ -1,8 +1,9 @@
-fastapi
-uvicorn
 prometheus_fastapi_instrumentator
+fastapi
+seaborn
 python-multipart
 opencv-python
+uvicorn
 joblib
 numpy
 mediapipe
