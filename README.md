@@ -1,211 +1,269 @@
-# 🎮 Astray - Gesture-controlled 3D Maze Game with ML Monitoring
+# MLOps Final Project - Hand Gesture Maze Navigation API
 
-Astray is an interactive 3D maze game where you control a ball using either keyboard controls or hand gestures. The game features progressively challenging mazes, smooth 3D graphics powered by Three.js, and includes ML model monitoring capabilities.
+## Project Overview
 
-## ✨ Features
+This repository contains the backend API, mlflow files and frontend for a hand gesture-controlled maze navigation game. The system uses machine learning to recognize hand gestures (numbers or arrow signs) and translates them into maze navigation commands. This is the production-ready API component of the MLOps final project.
 
-- 🎯 3D maze navigation with realistic ball physics
-- 👋 Hand gesture control using MediaPipe
-- ⌨️ Keyboard controls as an alternative input method
-- 📈 Progressive difficulty with increasing maze sizes
-- 👁️ Real-time hand tracking visualization
-- 🎨 Modern 3D graphics with textured walls and ground
-- 📊 ML model monitoring with Prometheus and Grafana
-- 🐳 Docker containerization for easy deployment
+## 🎯 Project Description
 
-## 🔧 Prerequisites
+Players navigate through a maze using hand gestures captured via webcam. The ML model processes the hand signs and converts them into directional commands, creating an interactive gaming experience that combines computer vision, machine learning, and web technologies.
 
-- 🌐 A modern web browser (Chrome, Firefox, Safari, or Edge)
-- 📹 Webcam for gesture control (optional)
-- 🐳 Docker and Docker Compose (for ML monitoring setup)
-- 🐍 Python 3.8+ (for ML components)
-- 💻 Basic understanding of web development (for setup)
+## 🏗️ Architecture
 
-## 🚀 Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/astray.git
-cd astray
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │──▶│    Backend API  │───▶│   ML Model      │
+│   (React/JS)    │    │  (Flask/FastAPI)│    │   (Hand Gesture)│
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   Monitoring    │
+                       │   (Grafana)     │
+                       └─────────────────┘
 ```
 
-2. Install Python dependencies:
+## 🚀 Features
+
+- **Hand Gesture Recognition**: Real-time processing of hand gestures for maze navigation
+- **RESTful API**: Clean, documented API endpoints for frontend integration
+- **Model Serving**: Efficient ML model deployment with prediction endpoints
+- **Monitoring & Metrics**: Comprehensive system monitoring with Grafana dashboards
+- **Containerized Deployment**: Docker-based deployment for scalability
+- **Unit Testing**: Comprehensive test coverage for reliability
+
+## 📁 Project Structure
+
+```
+.
+├── app/
+│   ├── __pycache__/
+│   ├── models/          # ML model files and utilities
+│   ├── routes/          # API route handlers
+│   ├── utils/           # Helper functions and utilities
+│   └── main.py          # Application entry point
+├── assets/              # Static assets
+├── grafana/
+│   ├── provisioning/    # Grafana configuration
+│   ├── dashboards.yml
+│   └── datasources.yml
+├── tests/
+│   ├── sample_hand.jpg  # Test images
+│   └── test_api.py      # Unit tests
+├── docker-compose.yml   # Multi-service orchestration
+├── dockerfile          # Container configuration
+├── requirements.txt     # Python dependencies
+├── prometheus.yml       # Metrics collection config
+└── README.md           # This file
+```
+
+## 🛠️ Technology Stack
+
+- **Backend Framework**: Flask/FastAPI
+- **Machine Learning**: TensorFlow/PyTorch, OpenCV
+- **Containerization**: Docker, Docker Compose
+- **Monitoring**: Prometheus, Grafana
+- **Testing**: pytest, unittest
+- **Deployment**: AWS/Cloud platform
+
+## 📊 Monitoring Metrics
+
+We track three key categories of metrics to ensure system reliability and performance:
+
+### 1. Model-Related Metrics
+- **Prediction Confidence Score**: Monitors the confidence level of hand gesture predictions
+- **Prediction Latency**: Tracks the time taken for model inference
+- **Model Accuracy**: Real-time accuracy measurements
+
+**Reasoning**: These metrics help us detect model drift, performance degradation, and ensure predictions are reliable enough for real-time gaming.
+
+### 2. Data-Related Metrics
+- **Input Image Quality**: Monitors image resolution, brightness, and clarity
+- **Gesture Detection Rate**: Tracks successful gesture detection vs. failed attempts
+- **Data Processing Time**: Measures preprocessing pipeline performance
+
+**Reasoning**: Poor input data quality directly impacts user experience. These metrics help identify camera issues, lighting problems, or preprocessing bottlenecks.
+
+### 3. Server-Related Metrics
+- **API Response Time**: Tracks endpoint latency
+- **Request Rate**: Monitors API calls per second
+- **Error Rate**: Tracks HTTP error responses (4xx, 5xx)
+- **CPU/Memory Usage**: System resource utilization
+
+**Reasoning**: These metrics ensure the API can handle user load and maintain responsive performance during gameplay.
+
+## 🔧 Installation & Setup
+
+### Prerequisites
+- Python 3.8+
+- Docker & Docker Compose
+- Git
+
+### Local Development
+
+1. **Clone the repository**
+```bash
+git clone <your-repo-url>
+cd MLOPS-FINAL-PROJECT
+```
+
+2. **Create virtual environment**
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Start the ML monitoring stack using Docker:
+4. **Run the application**
 ```bash
-docker-compose up -d
+python app/main.py
 ```
 
-4. Ensure you have the following files in your project directory:
-   - 📄 `index.html`
-   - 🎾 `ball.png` (ball texture)
-   - 🧱 `brick.png` (wall texture)
-   - 🏗️ `concrete.png` (ground texture)
+### Docker Deployment
 
-5. Open `index.html` in your web browser or set up a local server:
+1. **Build and run with Docker Compose**
 ```bash
-# Using Python
-python -m http.server 8000
-
-# Using Node.js
-npx serve
+docker-compose up --build
 ```
 
-## 🎮 How to Play
+2. **Access services**
+- API: http://localhost:5000
+- Grafana Dashboard: http://localhost:3000
+- Prometheus: http://localhost:9090
 
-### 🎹 Controls
+## 📡 API Endpoints
 
-#### Keyboard Controls:
-- ⬆️⬇️⬅️➡️ Arrow Keys or H/J/K/L: Move the ball
-- 🔄 G: Toggle gesture control
-- ℹ️ I: Show/hide instructions
-
-#### Gesture Controls:
-- ☝️ One finger: Move Up
-- ✊ Fist: Move Down
-- ✌️ Two fingers: Move Left
-- 🤟 Three fingers: Move Right
-
-### 🎯 Gameplay
-
-1. 🎯 The goal is to navigate the ball through the maze to reach the exit
-2. 📈 Each level increases in difficulty with a larger maze
-3. 🛑 The ball will stop when hitting walls
-4. 📹 The camera follows the ball's movement
-5. ⏱️ Gesture control requires holding the gesture for a brief moment
-
-## 💻 Technical Details
-
-### 🛠️ Technologies Used
-
-- 🎨 Three.js (r128) for 3D rendering
-- 🤖 MediaPipe Hands for gesture recognition
-- 🎯 HTML5 Canvas for hand tracking visualization
-- ⚡ Vanilla JavaScript for game logic
-- 📊 Prometheus for metrics collection
-- 📈 Grafana for metrics visualization
-- 🐳 Docker for containerization
-- 🔬 MLflow for experiment tracking
-
-### 📁 Project Structure
-
+### Health Check
+```http
+GET /health
 ```
-astray/
-├── 📂 app/                # Application code
-├── 🧪 tests/             # Test files
-├── 📊 grafana/           # Grafana dashboards
-├── 📈 mlruns/            # MLflow experiment tracking
-├── 📄 index.html         # Main game file
-├── 🎾 ball.png           # Ball texture
-├── 🧱 brick.png          # Wall texture
-├── 🏗️ concrete.png       # Ground texture
-├── 🐳 dockerfile         # Docker configuration
-├── 🐳 docker-compose.yml # Docker services configuration
-├── 📊 prometheus.yml     # Prometheus configuration
-├── 📋 requirements.txt   # Python dependencies
-└── 📖 README.md          # This file
+Returns API status and health information.
+
+### Gesture Prediction
+```http
+POST /predict
+Content-Type: multipart/form-data
+
+Body: image file
+```
+Processes hand gesture image and returns navigation command.
+
+**Response Example:**
+```json
+{
+  "gesture": "peace",
+  "confidence": 0.95,
+  "timestamp": "2025-05-29T10:30:00Z",
+  "processing_time": 0.15
+}
 ```
 
-## 🤖 ML Monitoring Setup
+### Metrics
+```http
+GET /metrics
+```
+Returns Prometheus-formatted metrics for monitoring.
 
-The project includes a complete ML monitoring stack for model selection and performance tracking:
+## 🧪 Testing
 
-1. **Model Selection Pipeline** 🔄
-   - 🤖 Automated comparison between RandomForest, SVM, and LightGBM models
-   - 📊 Model performance metrics tracked in MLflow
-   - ⚡ Automatic model selection based on accuracy and inference time
-   - 🔧 Hyperparameter tuning with MLflow tracking
+Run the test suite:
+```bash
+# Run all tests
+python -m pytest tests/
 
-2. **MLflow** 🔬
-   - 📦 Model versioning and registry
-   - 📊 Experiment tracking for all three models
-   - 📈 Performance metrics comparison
-   - 📁 Model artifacts storage
-   - 🌐 Access at: http://localhost:5000
+# Run with coverage
+python -m pytest tests/ --cov=app
 
-<img src="./assets/models.png" alt="Maze Demo" width="500"/>
-<img src="./assets/lgbm.png" alt="Maze Demo" width="500"/>
-<img src="./assets/rf.png" alt="Maze Demo" width="500"/>
-<img src="./assets/svm.png" alt="Maze Demo" width="500"/>
-
-3. **Prometheus** 📊
-   - 📈 Real-time model performance metrics
-   - ⏱️ Inference latency tracking
-   - 💻 Resource utilization monitoring
-   - 🚨 Custom metrics for model drift detection
-   - 🌐 Access at: http://localhost:9090
-
-4. **Grafana** 📈
-   - 📊 Real-time model performance dashboards
-   - 📉 Model comparison visualizations
-   - 💻 Resource utilization graphs
-   - 🚨 Custom alerts for model drift
-   - 🌐 Access at: http://localhost:3000
-   - 🔑 Default credentials: admin/admin
-
-<img src="./assets/RD.png" alt="Maze Demo" width="500"/>
-<img src="./assets/RC.png" alt="Maze Demo" width="500"/>
-<img src="./assets/RDA.png" alt="Maze Demo" width="500"/>
-
-
-
-### 🐳 Docker Services
-
-The project uses Docker containers for all ML components:
-
-```yaml
-services:
-  - 📊 prometheus: Latest version for metrics collection
-  - 📈 grafana: Latest version for visualization
-  - 🔬 mlflow: Latest version for experiment tracking
-  - 🤖 model-service: Custom service for model inference
+# Run specific test file
+python -m pytest tests/test_api.py -v
 ```
 
-### 🔄 Model Selection Process
+## 📈 Monitoring Dashboard
 
-1. **Data Collection** 📥
-   - 🎮 Game state data collection
-   - 👤 Player interaction metrics
-   - 📊 Performance metrics
+The Grafana dashboard provides real-time visualization of:
+- Model prediction accuracy and latency
+- API response times and error rates
+- System resource utilization
+- Data quality metrics
 
-2. **Model Training** 🎓
-   - 🌲 RandomForest: For robust classification
-   - 📐 SVM: For high-dimensional data
-   - ⚡ LightGBM: For fast inference and high accuracy
+Access the dashboard at `http://localhost:3000` with credentials:
+- Username: `admin`
+- Password: `admin`
 
-3. **Performance Monitoring** 📊
-   - 🎯 Real-time accuracy tracking
-   - ⏱️ Inference latency monitoring
-   - 💻 Resource utilization tracking
-   - 🚨 Model drift detection
+## 🚀 Deployment
 
-4. **Model Deployment** 🚀
-   - 🤖 Automatic model selection based on metrics
-   - 🐳 Containerized deployment
-   - A/B testing capability
-   - 🔄 Rollback support
+### Cloud Deployment Steps
 
-## 👥 Contributing
+1. **Prepare deployment configuration**
+2. **Set up CI/CD pipeline** (GitHub Actions/GitLab CI)
+3. **Deploy to cloud platform** (AWS, Azure, GCP)
+4. **Configure monitoring and logging**
+5. **Set up domain and SSL certificates**
 
-1. 🍴 Fork the repository
-2. 🌿 Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. 💾 Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. 📤 Push to the branch (`git push origin feature/AmazingFeature`)
-5. 🔄 Open a Pull Request
+### Environment Variables
+```bash
+# Model configuration
+MODEL_PATH=/app/models/hand_gesture_model.h5
+CONFIDENCE_THRESHOLD=0.8
+
+# API configuration
+API_HOST=0.0.0.0
+API_PORT=5000
+DEBUG=False
+
+# Monitoring
+PROMETHEUS_PORT=8000
+```
+
+## 🔄 Model Integration
+
+The API integrates with the ML model trained in the research repository:
+- Model artifacts are loaded at startup
+- Preprocessing pipeline matches training configuration
+- Prediction results are formatted for frontend consumption
+- Model versioning supported through MLflow integration
+
+## 🤝 Frontend Integration
+
+This API is designed to work with the provided frontend repository. Key integration points:
+- CORS configured for frontend domain
+- Standardized response formats
+- WebSocket support for real-time updates (if implemented)
+- Error handling with user-friendly messages
+
+## 📝 Development Notes
+
+- **Code Style**: Follow PEP 8 guidelines
+- **Logging**: Comprehensive logging for debugging and monitoring
+- **Error Handling**: Graceful error handling with appropriate HTTP status codes
+- **Security**: Input validation and sanitization implemented
+- **Performance**: Optimized for real-time gesture recognition
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Model Loading Errors**
+   - Verify model file path and format
+   - Check Python environment and dependencies
+
+2. **High Prediction Latency**
+   - Monitor system resources
+   - Consider model optimization techniques
+
+3. **Poor Gesture Recognition**
+   - Check camera quality and lighting
+   - Verify preprocessing pipeline
+
+
+## 👥 Contributors
+
+- mohamed shouaib - Backend Development & MLOps Implementation
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- 🎨 Three.js community for the 3D rendering library
-- 🤖 MediaPipe team for the hand tracking solution
-- 🎮 Original Astray project for maze generation algorithm
-- 📊 Prometheus and Grafana communities for monitoring tools
-
-
-Enjoy playing Astray! 🎮
+This project is part of an iti assignment for MLOps coursework.
