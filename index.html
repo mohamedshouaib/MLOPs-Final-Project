@@ -1,390 +1,507 @@
-<html>
-  <head>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
-      crossorigin="anonymous"
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
-      crossorigin="anonymous"
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
-      crossorigin="anonymous"
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"
-      crossorigin="anonymous"
-    ></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Astray – Gesture‑controlled 3‑D Maze</title>
 
-    <script src="Box2dWeb.min.js"></script>
-    <script src="Three.js"></script>
-    <script src="keyboard.js"></script>
-    <script src="jquery.js"></script>
-    <script src="maze.js"></script>
+    <!-- ‑‑‑ Libraries ‑‑‑ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+    <!-- MediaPipe Hands & Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <!-- ‑‑‑ Core Logic ‑‑‑ -->
     <script>
-      var camera = undefined,
-        scene = undefined,
-        renderer = undefined,
-        light = undefined,
-        mouseX = undefined,
-        mouseY = undefined,
-        maze = undefined,
-        mazeMesh = undefined,
-        mazeDimension = 11,
-        planeMesh = undefined,
-        ballMesh = undefined,
-        ballRadius = 0.25,
-        keyAxis = [0, 0],
-        ironTexture = THREE.ImageUtils.loadTexture("/ball.png"),
-        planeTexture = THREE.ImageUtils.loadTexture("/concrete.png"),
-        brickTexture = THREE.ImageUtils.loadTexture("/brick.png"),
-        gameState = undefined,
-        // Box2D shortcuts
-        b2World = Box2D.Dynamics.b2World,
-        b2FixtureDef = Box2D.Dynamics.b2FixtureDef,
-        b2BodyDef = Box2D.Dynamics.b2BodyDef,
-        b2Body = Box2D.Dynamics.b2Body,
-        b2CircleShape = Box2D.Collision.Shapes.b2CircleShape,
-        b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape,
-        b2Settings = Box2D.Common.b2Settings,
-        b2Vec2 = Box2D.Common.Math.b2Vec2,
-        // Box2D world variables
-        wWorld = undefined,
-        wBall = undefined;
+    /* =============================================================
+       GLOBALS
+    ============================================================= */
+    let camera, scene, renderer, light;
+    let ballMesh, ballRadius = 0.25;
+    let keyAxis = [0, 0];
+    let gameState = "initialize";
+    let mazeDimension = 11;           // always odd → perfect maze
+    let maze, mazeMesh, planeMesh;
+    
+    // Texture loader
+    const textureLoader = new THREE.TextureLoader();
+    let ballTexture, brickTexture, concreteTexture;
 
-      function createPhysicsWorld() {
-        // Create the world object.
-        wWorld = new b2World(new b2Vec2(0, 0), true);
+    /* ----------------  Gesture‑control variables --------------- */
+    let gestureCamera, hands;
+    let isGestureControlEnabled = true;
+    let lastGestureTime = 0;
+    let currentGesture = null;
+    let gestureHoldTime = 0;
+    const GESTURE_HOLD_THRESHOLD = 200; // ms                      
 
-        // Create the ball.
-        var bodyDef = new b2BodyDef();
-        bodyDef.type = b2Body.b2_dynamicBody;
-        bodyDef.position.Set(1, 1);
-        wBall = wWorld.CreateBody(bodyDef);
-        var fixDef = new b2FixtureDef();
-        fixDef.density = 1.0;
-        fixDef.friction = 0.0;
-        fixDef.restitution = 0.25;
-        fixDef.shape = new b2CircleShape(ballRadius);
-        wBall.CreateFixture(fixDef);
+    /* ------------------  Simple "physics" ---------------------- */
+    let ballPosition = { x: 1, y: 1 };
+    let ballVelocity = { x: 0, y: 0 };
+    const FRICTION = 0.85;
 
-        // Create the maze.
-        bodyDef.type = b2Body.b2_staticBody;
-        fixDef.shape = new b2PolygonShape();
-        fixDef.shape.SetAsBox(0.5, 0.5);
-        for (var i = 0; i < maze.dimension; i++) {
-          for (var j = 0; j < maze.dimension; j++) {
-            if (maze[i][j]) {
-              bodyDef.position.x = i;
-              bodyDef.position.y = j;
-              wWorld.CreateBody(bodyDef).CreateFixture(fixDef);
+    /* =============================================================
+       MAZE GENERATION  (ported from original Astray)
+       ‑ Perfect maze via iterative DFS on an odd‑dimension grid
+    ============================================================= */
+    function generateSquareMaze(size) {
+        // ensure odd dimension ≥ 5
+        if (size % 2 === 0) size += 1;
+        if (size < 5)       size = 5;
+
+        // start with all walls = true
+        const maze = Array.from({ length: size }, () => Array(size).fill(true));
+
+        // helper → index of neighbours two cells away
+        const dirs = [
+            [ 0,  2],  // north
+            [ 0, -2],  // south
+            [ 2,  0],  // east
+            [-2,  0]   // west
+        ];
+
+        // stack‑based DFS (iterative) starting at (1,1)
+        const stack = [[1, 1]];
+        maze[1][1] = false;            // carve start cell
+
+        while (stack.length) {
+            const [cx, cy] = stack[stack.length - 1];
+
+            // collect unvisited neighbours two steps away
+            const neighbours = dirs
+                .map(([dx, dy]) => [cx + dx, cy + dy])
+                .filter(([nx, ny]) => nx > 0 && ny > 0 && nx < size - 1 && ny < size - 1 && maze[nx][ny]);
+
+            if (neighbours.length === 0) {
+                stack.pop();           // backtrack when dead‑end
+            } else {
+                // choose random neighbour and carve passage
+                const [nx, ny] = neighbours[Math.floor(Math.random() * neighbours.length)];
+                const wallX = cx + (nx - cx) / 2;
+                const wallY = cy + (ny - cy) / 2;
+                maze[wallX][wallY] = false; // knock down wall between
+                maze[nx][ny]     = false;   // carve neighbour
+                stack.push([nx, ny]);
             }
-          }
         }
-      }
 
-      function generate_maze_mesh(field) {
-        var dummy = new THREE.Geometry();
-        for (var i = 0; i < field.dimension; i++) {
-          for (var j = 0; j < field.dimension; j++) {
-            if (field[i][j]) {
-              var geometry = new THREE.CubeGeometry(1, 1, 1, 1, 1, 1);
-              var mesh_ij = new THREE.Mesh(geometry);
-              mesh_ij.position.x = i;
-              mesh_ij.position.y = j;
-              mesh_ij.position.z = 0.5;
-              THREE.GeometryUtils.merge(dummy, mesh_ij);
+        // create exit at bottom‑right side, one cell up
+        maze[size - 1][size - 2] = false;
+        return maze;
+    }
+
+    /* =============================================================
+       THREE.JS HELPERS
+    ============================================================= */
+    function generateMazeMesh(field) {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices  = [];
+        const uvs     = [];
+        let vIndex = 0;
+
+        const pushCube = (x, y, z) => {
+            /* 24 vertices, 36 indices (two triangles per face) */
+            const verts = [
+                // front
+                x-0.5,y-0.5,z+0.5,  x+0.5,y-0.5,z+0.5,  x+0.5,y+0.5,z+0.5,  x-0.5,y+0.5,z+0.5,
+                // back
+                x-0.5,y-0.5,z-0.5,  x-0.5,y+0.5,z-0.5,  x+0.5,y+0.5,z-0.5,  x+0.5,y-0.5,z-0.5,
+                // top
+                x-0.5,y+0.5,z-0.5,  x-0.5,y+0.5,z+0.5,  x+0.5,y+0.5,z+0.5,  x+0.5,y+0.5,z-0.5,
+                // bottom
+                x-0.5,y-0.5,z-0.5,  x+0.5,y-0.5,z-0.5,  x+0.5,y-0.5,z+0.5,  x-0.5,y-0.5,z+0.5,
+                // right
+                x+0.5,y-0.5,z-0.5,  x+0.5,y+0.5,z-0.5,  x+0.5,y+0.5,z+0.5,  x+0.5,y-0.5,z+0.5,
+                // left
+                x-0.5,y-0.5,z-0.5,  x-0.5,y-0.5,z+0.5,  x-0.5,y+0.5,z+0.5,  x-0.5,y+0.5,z-0.5
+            ];
+            const inds = [
+                0,1,2, 0,2,3,    4,5,6, 4,6,7,
+                8,9,10, 8,10,11, 12,13,14, 12,14,15,
+                16,17,18, 16,18,19, 20,21,22, 20,22,23
+            ];
+            
+            // UV coordinates for each face
+            const faceUVs = [
+                // front
+                0,0, 1,0, 1,1, 0,1,
+                // back
+                0,0, 1,0, 1,1, 0,1,
+                // top
+                0,0, 1,0, 1,1, 0,1,
+                // bottom
+                0,0, 1,0, 1,1, 0,1,
+                // right
+                0,0, 1,0, 1,1, 0,1,
+                // left
+                0,0, 1,0, 1,1, 0,1
+            ];
+            
+            vertices.push(...verts);
+            indices.push(...inds.map(i => i + vIndex));
+            uvs.push(...faceUVs);
+            vIndex += 24;
+        };
+
+        for (let i = 0; i < field.length; i++) {
+            for (let j = 0; j < field[i].length; j++) {
+                if (field[i][j]) pushCube(i, j, 0.5);
             }
-          }
         }
-        var material = new THREE.MeshPhongMaterial({ map: brickTexture });
-        var mesh = new THREE.Mesh(dummy, material);
-        return mesh;
-      }
 
-      function createRenderWorld() {
-        // Create the scene object.
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        
+        // Use brick texture for walls
+        const wallMaterial = new THREE.MeshPhongMaterial({ 
+            map: brickTexture,
+            shininess: 30,
+            side: THREE.DoubleSide
+        });
+        return new THREE.Mesh(geometry, wallMaterial);
+    }
+
+    /* =============================================================
+       RENDER WORLD
+    ============================================================= */
+    function createRenderWorld() {
         scene = new THREE.Scene();
 
-        // Add the light.
-        light = new THREE.PointLight(0xffffff, 1);
+        // Load textures
+        ballTexture = textureLoader.load('ball.png');
+        brickTexture = textureLoader.load('brick.png');
+        concreteTexture = textureLoader.load('concrete.png');
+        
+        // Set texture repeat for better tiling
+        brickTexture.wrapS = brickTexture.wrapT = THREE.RepeatWrapping;
+        brickTexture.repeat.set(0.5, 0.5);
+        concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
+        concreteTexture.repeat.set(mazeDimension/5, mazeDimension/5);
+
+        // lights - increased intensity to better show textures
+        light = new THREE.PointLight(0xffffff, 1.2);
         light.position.set(1, 1, 1.3);
         scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040, 0.6));
 
-        // Add the ball.
-        g = new THREE.SphereGeometry(ballRadius, 32, 16);
-        m = new THREE.MeshPhongMaterial({ map: ironTexture });
-        ballMesh = new THREE.Mesh(g, m);
-        ballMesh.position.set(1, 1, ballRadius);
+        // ball with texture
+        const ballGeom = new THREE.SphereGeometry(ballRadius, 32, 32);
+        ballMesh = new THREE.Mesh(ballGeom, new THREE.MeshPhongMaterial({ 
+            map: ballTexture,
+            shininess: 50
+        }));
+        ballMesh.position.set(ballPosition.x, ballPosition.y, ballRadius);
         scene.add(ballMesh);
 
-        // Add the camera.
-        var aspect = window.innerWidth / window.innerHeight;
-        camera = new THREE.PerspectiveCamera(60, aspect, 1, 1000);
+        // camera
+        const aspect = window.innerWidth / window.innerHeight;
+        camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
         camera.position.set(1, 1, 5);
         scene.add(camera);
 
-        // Add the maze.
-        mazeMesh = generate_maze_mesh(maze);
+        // maze & ground
+        mazeMesh = generateMazeMesh(maze);
         scene.add(mazeMesh);
 
-        // Add the ground.
-        g = new THREE.PlaneGeometry(
-          mazeDimension * 10,
-          mazeDimension * 10,
-          mazeDimension,
-          mazeDimension
-        );
-        planeTexture.wrapS = planeTexture.wrapT = THREE.RepeatWrapping;
-        planeTexture.repeat.set(mazeDimension * 5, mazeDimension * 5);
-        m = new THREE.MeshPhongMaterial({ map: planeTexture });
-        planeMesh = new THREE.Mesh(g, m);
-        planeMesh.position.set(
-          (mazeDimension - 1) / 2,
-          (mazeDimension - 1) / 2,
-          0
-        );
-        planeMesh.rotation.set(Math.PI / 2, 0, 0);
+        const groundGeom = new THREE.PlaneGeometry(mazeDimension * 2, mazeDimension * 2);
+        const groundMat  = new THREE.MeshPhongMaterial({ 
+            map: concreteTexture,
+            shininess: 10,
+            side: THREE.DoubleSide
+        });
+        planeMesh = new THREE.Mesh(groundGeom, groundMat);
+        planeMesh.rotation.x = -Math.PI / 2;
+        planeMesh.position.set((mazeDimension - 1) / 2, (mazeDimension - 1) / 2, 0);
         scene.add(planeMesh);
-      }
+    }
 
-      function updatePhysicsWorld() {
-        // Apply "friction".
-        var lv = wBall.GetLinearVelocity();
-        lv.Multiply(0.95);
-        wBall.SetLinearVelocity(lv);
+    /* =============================================================
+       PHYSICS (very light)
+    ============================================================= */
+    function updatePhysics() {
+        ballVelocity.x *= FRICTION;
+        ballVelocity.y *= FRICTION;
 
-        // Apply user-directed force.
-        var f = new b2Vec2(
-          keyAxis[0] * wBall.GetMass() * 0.25,
-          keyAxis[1] * wBall.GetMass() * 0.25
-        );
-        wBall.ApplyImpulse(f, wBall.GetPosition());
-        keyAxis = [0, 0];
+        // input force
+        const FORCE = 0.02;
+        ballVelocity.x += keyAxis[0] * FORCE;
+        ballVelocity.y += keyAxis[1] * FORCE;
 
-        // Take a time step.
-        wWorld.Step(1 / 60, 8, 3);
-      }
+        const newX = ballPosition.x + ballVelocity.x;
+        const newY = ballPosition.y + ballVelocity.y;
 
-      function updateRenderWorld() {
-        // Update ball position.
-        var stepX = wBall.GetPosition().x - ballMesh.position.x;
-        var stepY = wBall.GetPosition().y - ballMesh.position.y;
-        ballMesh.position.x += stepX;
-        ballMesh.position.y += stepY;
-
-        // Update ball rotation.
-        var tempMat = new THREE.Matrix4();
-        tempMat.makeRotationAxis(
-          new THREE.Vector3(0, 1, 0),
-          stepX / ballRadius
-        );
-        tempMat.multiplySelf(ballMesh.matrix);
-        ballMesh.matrix = tempMat;
-        tempMat = new THREE.Matrix4();
-        tempMat.makeRotationAxis(
-          new THREE.Vector3(1, 0, 0),
-          -stepY / ballRadius
-        );
-        tempMat.multiplySelf(ballMesh.matrix);
-        ballMesh.matrix = tempMat;
-        ballMesh.rotation.getRotationFromMatrix(ballMesh.matrix);
-
-        // Update camera and light positions.
-        camera.position.x += (ballMesh.position.x - camera.position.x) * 0.1;
-        camera.position.y += (ballMesh.position.y - camera.position.y) * 0.1;
-        camera.position.z += (5 - camera.position.z) * 0.1;
-        light.position.x = camera.position.x;
-        light.position.y = camera.position.y;
-        light.position.z = camera.position.z - 3.7;
-      }
-
-      function gameLoop() {
-        switch (gameState) {
-          case "initialize":
-            maze = generateSquareMaze(mazeDimension);
-            maze[mazeDimension - 1][mazeDimension - 2] = false;
-            createPhysicsWorld();
-            createRenderWorld();
-            camera.position.set(1, 1, 5);
-            light.position.set(1, 1, 1.3);
-            light.intensity = 0;
-            var level = Math.floor((mazeDimension - 1) / 2 - 4);
-            $("#level").html("Level " + level);
-            gameState = "fade in";
-            break;
-
-          case "fade in":
-            light.intensity += 0.1 * (1.0 - light.intensity);
-            renderer.render(scene, camera);
-            if (Math.abs(light.intensity - 1.0) < 0.05) {
-              light.intensity = 1.0;
-              gameState = "play";
-            }
-            break;
-
-          case "play":
-            updatePhysicsWorld();
-            updateRenderWorld();
-            renderer.render(scene, camera);
-
-            // Check for victory.
-            var mazeX = Math.floor(ballMesh.position.x + 0.5);
-            var mazeY = Math.floor(ballMesh.position.y + 0.5);
-            if (mazeX == mazeDimension && mazeY == mazeDimension - 2) {
-              mazeDimension += 2;
-              gameState = "fade out";
-            }
-            break;
-
-          case "fade out":
-            updatePhysicsWorld();
-            updateRenderWorld();
-            light.intensity += 0.1 * (0.0 - light.intensity);
-            renderer.render(scene, camera);
-            if (Math.abs(light.intensity - 0.0) < 0.1) {
-              light.intensity = 0.0;
-              renderer.render(scene, camera);
-              gameState = "initialize";
-            }
-            break;
+        const mazeX = Math.floor(newX + 0.5);
+        const mazeY = Math.floor(newY + 0.5);
+        if (mazeX >= 0 && mazeX < mazeDimension && mazeY >= 0 && mazeY < mazeDimension && !maze[mazeX][mazeY]) {
+            ballPosition.x = newX;
+            ballPosition.y = newY;
+        } else {
+            ballVelocity.x = 0;
+            ballVelocity.y = 0;
         }
+        keyAxis = [0, 0]; // reset input each frame
+    }
 
+    /* =============================================================
+       RENDER UPDATE
+    ============================================================= */
+    function updateRender() {
+    // Update ball position
+    ballMesh.position.set(ballPosition.x, ballPosition.y, ballRadius);
+
+    // Rolling logic
+    const velocityMagnitude = Math.sqrt(ballVelocity.x ** 2 + ballVelocity.y ** 2);
+    if (velocityMagnitude > 0.0001) {
+        const direction = new THREE.Vector3(ballVelocity.x, ballVelocity.y, 0).normalize();
+        const axis = new THREE.Vector3(-direction.y, direction.x, 0); // Perpendicular axis
+        const angle = velocityMagnitude / ballRadius; // θ = d / r
+
+        ballMesh.rotateOnAxis(axis, angle);
+    }
+
+    // Camera follows ball
+    camera.position.x += (ballPosition.x - camera.position.x) * 0.1;
+    camera.position.y += (ballPosition.y - camera.position.y) * 0.1;
+    camera.position.z = 5;
+
+    // Move light with camera
+    light.position.set(camera.position.x, camera.position.y, camera.position.z - 3.7);
+    }
+
+    /* =============================================================
+       GAME LOOP
+    ============================================================= */
+    function gameLoop() {
+        switch (gameState) {
+            case "initialize":
+                maze = generateSquareMaze(mazeDimension);
+                ballPosition = { x: 1, y: 1 };
+                ballVelocity = { x: 0, y: 0 };
+                createRenderWorld();
+                document.getElementById("level").textContent = "Level " + (Math.floor((mazeDimension - 1) / 2 - 4) || 1);
+                gameState = "play";
+                break;
+
+            case "play":
+                updatePhysics();
+                updateRender();
+                renderer.render(scene, camera);
+
+                // victory?  Exit coordinate is (mazeDimension, mazeDimension‑2) in original game, but inside ground we stop one before edge.
+                const mazeX = Math.floor(ballPosition.x + 0.5);
+                const mazeY = Math.floor(ballPosition.y + 0.5);
+                if (mazeX >= mazeDimension - 1 && mazeY === mazeDimension - 2) {
+                    mazeDimension += 2;      // next level larger
+                    gameState = "initialize";
+                }
+                break;
+        }
         requestAnimationFrame(gameLoop);
-      }
+    }
 
-      function onResize() {
+    /* =============================================================
+       CONTROLS – Gesture, Keyboard, Resize
+    ============================================================= */
+    function recognizeGesture(landmarks) {
+        if (!landmarks || !landmarks.length) return null;
+        const hand = landmarks[0];
+        const indexTip = hand[8], indexPip = hand[6];
+        const middleTip = hand[12], middlePip = hand[10];
+        const ringTip = hand[16], ringPip = hand[14];
+        const pinkyTip = hand[20], pinkyPip = hand[18];
+
+        let extended = 0;
+        if (indexTip.y < indexPip.y)  extended++;
+        if (middleTip.y < middlePip.y) extended++;
+        if (ringTip.y < ringPip.y)     extended++;
+        if (pinkyTip.y < pinkyPip.y)   extended++;
+
+        switch (extended) {
+            case 0: return "fist";   // down
+            case 1: return "one";   // up
+            case 2: return "two";   // left
+            case 3: return "three"; // right
+            default: return null;
+        }
+    }
+
+    function gestureToDirection(gesture) {
+        const map = { one: "up", fist: "down", two: "left", three: "right" };
+        return map[gesture] || null;
+    }
+
+    function directionToAxis(dir) {
+        switch (dir) {
+            case "up":    return [0,  1];
+            case "down":  return [0, -1];
+            case "left":  return [-1, 0];
+            case "right": return [1,  0];
+            default:       return [0,  0];
+        }
+    }
+
+    function onResults(results) {
+        const canvas = document.querySelector('.output_canvas');
+        const ctx     = canvas.getContext('2d');
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+        if (isGestureControlEnabled && results.multiHandLandmarks?.length) {
+            results.multiHandLandmarks.forEach(lm => {
+                drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+                drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 1 });
+            });
+
+            const gesture = recognizeGesture(results.multiHandLandmarks);
+            const now = Date.now();
+
+            if (gesture) {
+                if (gesture === currentGesture) {
+                    gestureHoldTime += now - lastGestureTime;
+                    if (gestureHoldTime >= GESTURE_HOLD_THRESHOLD) {
+                        const dir = gestureToDirection(gesture);
+                        if (dir) {
+                            keyAxis = directionToAxis(dir);
+                            updateGestureStatus(`Gesture: ${dir.toUpperCase()}`);
+                        }
+                    }
+                } else {
+                    currentGesture = gesture;
+                    gestureHoldTime = 0;
+                }
+            } else {
+                currentGesture = null;
+                gestureHoldTime = 0;
+            }
+            lastGestureTime = now;
+        }
+        ctx.restore();
+    }
+
+    function initializeHandTracking() {
+        const video = document.querySelector('.input_video');
+        hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+        gestureCamera = new Camera(video, {
+            onFrame: async () => await hands.send({ image: video }),
+            width: 640, height: 480
+        });
+        gestureCamera.start();
+    }
+
+    /* --------------------  UI HANDLERS  ----------------------- */
+    function onKeyDown(e) {
+        if (!isGestureControlEnabled) {
+            switch (e.code) {
+                case 'ArrowUp':   case 'KeyK': keyAxis = [0,  1]; break;
+                case 'ArrowDown': case 'KeyJ': keyAxis = [0, -1]; break;
+                case 'ArrowLeft': case 'KeyH': keyAxis = [-1, 0]; break;
+                case 'ArrowRight':case 'KeyL': keyAxis = [1,  0]; break;
+            }
+        }
+        if (e.code === 'KeyG') toggleGestureControl();
+        if (e.code === 'KeyI') document.getElementById('instructions').classList.toggle('show');
+    }
+
+    function toggleGestureControl() {
+        isGestureControlEnabled = !isGestureControlEnabled;
+        document.getElementById('gesture-toggle').textContent = isGestureControlEnabled ? 'Disable Gestures' : 'Enable Gestures';
+        updateGestureStatus(isGestureControlEnabled ? 'Gesture Control: ON' : 'Gesture Control: OFF');
+    }
+
+    function updateGestureStatus(msg) {
+        document.getElementById('gesture-status').textContent = msg;
+    }
+
+    function onResize() {
         renderer.setSize(window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
-      }
+    }
 
-      function onMoveKey(axis) {
-        keyAxis = axis.slice(0);
-      }
-
-      jQuery.fn.centerv = function () {
-        wh = window.innerHeight;
-        h = this.outerHeight();
-        this.css("position", "absolute");
-        this.css("top", Math.max(0, (wh - h) / 2) + "px");
-        return this;
-      };
-
-      jQuery.fn.centerh = function () {
-        ww = window.innerWidth;
-        w = this.outerWidth();
-        this.css("position", "absolute");
-        this.css("left", Math.max(0, (ww - w) / 2) + "px");
-        return this;
-      };
-
-      jQuery.fn.center = function () {
-        this.centerv();
-        this.centerh();
-        return this;
-      };
-
-      $(document).ready(function () {
-        // Prepare the instructions.
-        $("#instructions").center();
-        $("#instructions").hide();
-        KeyboardJS.bind.key(
-          "i",
-          function () {
-            $("#instructions").show();
-          },
-          function () {
-            $("#instructions").hide();
-          }
-        );
-
-        // Create the renderer.
-        renderer = new THREE.WebGLRenderer();
+    /* =============================================================
+       INIT
+    ============================================================= */
+    function init() {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
         document.body.appendChild(renderer.domElement);
 
-        // Bind keyboard and resize events.
-        KeyboardJS.bind.axis("left", "right", "down", "up", onMoveKey);
-        KeyboardJS.bind.axis("h", "l", "j", "k", onMoveKey);
-        $(window).resize(onResize);
+        document.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', onResize);
 
-        // Set the initial game state.
+        initializeHandTracking();
+        updateGestureStatus('Gesture Control: ON');
+
         gameState = "initialize";
-
-        // Start the game loop.
         requestAnimationFrame(gameLoop);
-      });
+    }
+
+    window.addEventListener('load', init);
     </script>
 
+    <!-- ‑‑‑ Styles ‑‑‑ -->
     <style>
-      body {
-        background: black;
-        margin: 0;
-        padding: 0;
-        font-family: "Helvetica";
-      }
+        body { margin:0; overflow:hidden; background:#000; font-family:Arial, sans-serif; }
 
-      #instructions {
-        background-color: rgba(0, 0, 0, 0.75);
-        color: white;
-        text-align: center;
-        padding: 32px;
-        margin: 0px;
-        display: inline;
-        border: 2px solid white;
-      }
+        /* instruction overlay */
+        #instructions {
+            position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+            background:rgba(0,0,0,0.9); color:#fff; padding:32px; border:2px solid #fff; border-radius:10px; display:none; z-index:1000;
+        }
+        #instructions.show { display:block; }
 
-      #help {
-        position: absolute;
-        left: 0px;
-        bottom: 0px;
-        padding: 4px;
-        color: white;
-      }
+        #help   { position:absolute; left:10px; bottom:10px; color:#fff; font-size:14px; z-index:100; }
+        #level  { position:absolute; left:10px; top:10px; color:#ff0; font-weight:bold; font-size:18px; z-index:100; }
 
-      #level {
-        position: absolute;
-        left: 0px;
-        top: 0px;
-        padding: 4px;
-        color: yellow;
-        font-weight: bold;
-      }
-      .output_canvas {
-        position: absolute;
-        bottom: 0px;
-        right: 0px;
-        z-index: 1;
-        width: 300px;
-      }
+        /* gesture */
+        #gesture-controls { position:absolute; right:10px; top:10px; padding:10px; background:rgba(0,0,0,0.8); color:#fff; border-radius:5px; z-index:100; }
+        #gesture-toggle   { background:#4CAF50; color:#fff; border:none; padding:6px 12px; border-radius:5px; cursor:pointer; font-size:12px; }
+        #gesture-toggle:hover { background:#45a049; }
+        #gesture-status   { position:absolute; left:50%; top:10px; transform:translateX(-50%); padding:6px 12px; background:rgba(0,0,0,0.8); color:#0f0; font-weight:bold; border-radius:5px; z-index:100; }
+
+        .output_canvas { position:absolute; bottom:10px; right:10px; width:240px; height:180px; border:2px solid #0f0; border-radius:5px; z-index:100; }
+        .input_video   { display:none; }
+        .gesture-info  { position:absolute; bottom:200px; right:10px; background:rgba(0,0,0,0.9); color:#fff; font-size:12px; padding:10px; border-radius:5px; max-width:240px; z-index:100; }
     </style>
-  </head>
-
-  <body>
-    <div class="game">
-      <div id="instructions">
-        How to play Astray:
-        <br /><br />
-        Use the arrow keys to move the ball and find the exit to the maze.
-        <br /><br />
-        Vim trainees: h, j, k, l
-      </div>
-
-      <div id="help">Hold down the 'I' key for instructions.</div>
-
-      <div id="level">Level 1</div>
+</head>
+<body>
+    <div id="instructions">
+        <h2>How to play Astray:</h2>
+        <p>Use the arrow keys (or H/J/K/L) or hand gestures to roll the ball to the exit.</p>
+        <p><strong>Gestures:</strong><br>☝️ One finger → Up&nbsp;&nbsp;|&nbsp;&nbsp;✊ Fist → Down<br>✌️ Two → Left&nbsp;&nbsp;|&nbsp;&nbsp;🤟 Three → Right</p>
+        <p>Press <kbd>G</kbd> to toggle gesture control<br>Press <kbd>I</kbd> to show / hide this overlay</p>
     </div>
+
+    <div id="help">Press 'I' for instructions | Press 'G' to toggle gestures</div>
+    <div id="level">Level 1</div>
+
+    <div id="gesture-controls">
+        <div>Gesture Control</div>
+        <button id="gesture-toggle" onclick="toggleGestureControl()">Disable Gestures</button>
+    </div>
+
+    <div id="gesture-status">Gesture Control: ON</div>
+
+    <div class="gesture-info">
+        <strong>Gestures:</strong><br>
+        ☝️ One → Up<br>
+        ✊ Fist → Down<br>
+        ✌️ Two → Left<br>
+        🤟 Three → Right
+    </div>
+
     <div class="vid">
-      <video class="input_video" autoplay loop muted hidden>
-        <source src="" />
-      </video>
-      <canvas class="output_canvas" width="1280px" height="720px"></canvas>
+        <video class="input_video" autoplay playsinline></video>
+        <canvas class="output_canvas" width="640" height="480"></canvas>
     </div>
-    <script src="api-call.js"></script>
-    <script type="module" src="mp.js"></script>
-  </body>
+</body>
 </html>

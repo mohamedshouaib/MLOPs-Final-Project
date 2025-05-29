@@ -1,0 +1,51 @@
+{
+  "id": null,
+  "uid": "maze-gesture-dashboard",
+  "title": "Maze Gesture API Metrics",
+  "tags": ["maze", "gesture", "api"],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Request Duration (Seconds)",
+      "targets": [
+        {
+          "expr": "http_request_duration_seconds_sum",
+          "legendFormat": "Total Duration",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 }
+    },
+    {
+      "type": "graph",
+      "title": "Request Count",
+      "targets": [
+        {
+          "expr": "http_request_duration_seconds_count",
+          "legendFormat": "Count",
+          "refId": "B"
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 9 }
+    },
+    {
+      "type": "graph",
+      "title": "Request Duration Average",
+      "targets": [
+        {
+          "expr": "rate(http_request_duration_seconds_sum[1m]) / rate(http_request_duration_seconds_count[1m])",
+          "legendFormat": "Avg Duration (1m)",
+          "refId": "C"
+        }
+      ],
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 9 }
+    }
+  ]
+}

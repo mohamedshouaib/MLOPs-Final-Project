@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+prometheus_fastapi_instrumentator
+python-multipart
+opencv-python
+joblib
+numpy
+mediapipe
+pytest
+httpx
+scikit-learn>=1.0
