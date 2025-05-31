@@ -25,10 +25,10 @@ Although **Random Forest** achieved the highest performance (0.98 test accuracy 
 > 🛑 The serialized Random Forest model exceeded GitHub's file size limit (100 MB), which made it impractical for version control and sharing via GitHub.
 
 ✅ On the other hand, **SVM** offers a good balance between performance and file size, with:
-- **Test Accuracy:** 0.91  
-- **Test F1 Score:** 0.91  
-- **Val Accuracy:** 0.92  
-- **Val F1 Score:** 0.92
+- **Test Accuracy:** 0.93  
+- **Test F1 Score:** 0.94  
+- **Val Accuracy:** 0.94  
+- **Val F1 Score:** 0.94
 
 This makes SVM a reasonable and reproducible choice for deployment and future experimentation.
 
