@@ -90,7 +90,7 @@ curl -X POST http://localhost:8000/predict \
 This project supports the following models:
 - ✅ Random Forest
 - ✅ Support Vector Machine (SVM)
-- ✅ LightGBM
+- ✅ LR
 
 Each model is trained and evaluated, and the **best performing model is served via the API**.
 
