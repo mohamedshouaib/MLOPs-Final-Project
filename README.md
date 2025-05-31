@@ -36,8 +36,8 @@ This makes SVM a reasonable and reproducible choice for deployment and future ex
 
 | Model | Test Accuracy | Test F1 | Val Accuracy | Val F1 |
 |-------|----------------|---------|---------------|--------|
-| Logistic Regression (lr) | 0.93 | 0.94 | 0.94 | 0.94 |
+| Support Vector Machine (svm) | 0.93 | 0.94 | 0.94 | 0.94 |
 | Random Forest (rf)       | **0.98** | **0.98** | **0.98** | **0.98** |
-| Support Vector Machine (svm) | 0.91 | 0.91 | 0.92 | 0.92 |
+| Logistic Regression (lr) | 0.91 | 0.91 | 0.92 | 0.92 |
 
 > 🔍 **Selected Model:** SVM (for optimal balance between accuracy and storage limits)
